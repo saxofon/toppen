@@ -21,7 +21,8 @@
 
 static struct timespec period;
 
-static pid_t pid;
+static pid_t pid = 0;
+static pid_t tid = 0;
 static int ticks_per_second;
 static int ns_per_tick;
 static int updated = 0;
@@ -54,10 +55,14 @@ static void open_cpustat(void)
 	}
 }
 
-static void open_procpidstat(pid_t pid)
+static void open_procpidstat(pid_t pid, pid_t tid)
 {
 	char str[128];
-	sprintf(str, "/proc/%d/stat", pid);
+	if (tid) {
+		sprintf(str, "/proc/%d/task/%d/stat", pid, tid);
+	} else {
+		sprintf(str, "/proc/%d/stat", pid);
+	}
 	fprocpidstat = fopen(str, "r");
 	if (fprocpidstat == NULL) {
 		perror("fopen procpidstat");
@@ -67,7 +72,7 @@ static void open_procpidstat(pid_t pid)
 
 static void error(void)
 {
-	printf("please enter pid number as arg1\n");
+	printf("please enter pid number as arg1 and optionally tid number as arg2\n");
 	exit(-1);
 }
 
@@ -170,7 +175,7 @@ static void info_via_proc_pid_stat(struct timespec *ts, uint64_t deltans)
 #endif
 
 	memset(&cps, 0, sizeof(cps));
-	open_procpidstat(pid);
+	open_procpidstat(pid, tid);
 	fgets(buf, sizeof(buf), fprocpidstat);
 	status = sscanf(buf, "%*d %*s %*c %*Ld %*Ld %*Ld %*Ld %*Ld"
 		" %*Lu %*Lu %*Lu %*Lu %*Lu %Lu %Lu %Ld %Ld"
@@ -223,13 +228,18 @@ int main(int argc, char *argv[])
 {
 	struct timespec resolution;
 
-	if (argc != 2)
-		error();
-
-	pid = atoi(argv[1]);
+	if (argc >= 2)
+		pid = atoi(argv[1]);
 
 	if (pid == 0)
 		error();
+
+	if (argc >= 3) {
+		tid = atoi(argv[2]);
+
+		if (tid == 0)
+			error();
+	}
 
 	ticks_per_second = sysconf(_SC_CLK_TCK);
 	ns_per_tick = 1000000000/ticks_per_second;
